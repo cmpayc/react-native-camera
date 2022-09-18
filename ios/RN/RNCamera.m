@@ -53,6 +53,8 @@ static NSDictionary *defaultFaceDetectorOptions = nil;
 
 BOOL _recordRequested = NO;
 BOOL _sessionInterrupted = NO;
+BOOL _canTakeSnapshot = NO;
+NSMutableDictionary *_snapshotOptions = nil;
 
 
 - (id)initWithBridge:(RCTBridge *)bridge
@@ -91,6 +93,8 @@ BOOL _sessionInterrupted = NO;
         self.invertImageData = true;
         _recordRequested = NO;
         _sessionInterrupted = NO;
+        _canTakeSnapshot = NO;
+        _snapshotOptions = nil;
 
         // we will do other initialization after
         // the view is loaded.
@@ -844,7 +848,7 @@ BOOL _sessionInterrupted = NO;
 
                 // Get final JPEG image and set compression
                 NSString *qualityKey = (__bridge NSString *)kCGImageDestinationLossyCompressionQuality;
-                if (imageType == RNCameraImageTypeJPEG) {
+                if (imageType == RNCameraImageTypeJPEG && (!options[@"writeExif"] || [options[@"writeExif"] boolValue])) {
                     float quality = [options[@"quality"] floatValue];
                     [metadata setObject:@(quality) forKey:qualityKey];
                 }
@@ -854,7 +858,7 @@ BOOL _sessionInterrupted = NO;
                 // that already rotate the image.
                 // Other dimension attributes will be set automatically
                 // regardless of what we have on our metadata dict
-                if (resetOrientation){
+                if (resetOrientation && (!options[@"writeExif"] || [options[@"writeExif"] boolValue])){
                     metadata[(NSString*)kCGImagePropertyOrientation] = @(1);
                 }
 
@@ -977,6 +981,16 @@ BOOL _sessionInterrupted = NO;
                         response[@"width"] = @(takenImage.size.width);
                         response[@"height"] = @(takenImage.size.height);
 
+                        if ([options[@"arrayBuffer"] boolValue]) {
+                            NSMutableArray *uint8Array = [NSMutableArray array];
+                            for (NSUInteger i = 0; i < [destData length]; i += sizeof(int8_t)) {
+                                int8_t elem = OSReadLittleInt([destData bytes], i);
+                                [uint8Array addObject:[NSNumber numberWithInt:elem]];
+                            }
+                            response[@"arrayBuffer"] = uint8Array;
+                        }
+
+
                         if ([options[@"base64"] boolValue]) {
                             response[@"base64"] = [destData base64EncodedStringWithOptions:0];
                         }
@@ -1021,6 +1035,13 @@ BOOL _sessionInterrupted = NO;
                [NSError errorWithDomain:@"E_IMAGE_CAPTURE_FAILED" code: 500 userInfo:@{NSLocalizedDescriptionKey:exception.reason}]
         );
     }
+}
+
+- (void)takeSnapshot:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
+{
+    _canTakeSnapshot = YES;
+    _snapshotOptions = [options mutableCopy];
+    resolve(@{});
 }
 
 - (void)recordWithOrientation:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject{
@@ -1069,6 +1090,7 @@ BOOL _sessionInterrupted = NO;
         if ([self.barcodeDetector isRealDetector]) {
             [self stopBarcodeDetection];
         }
+        [self stopSnapshotOutput];
         [self setupMovieFileCapture];
     }
 
@@ -1353,7 +1375,7 @@ BOOL _sessionInterrupted = NO;
         // to avoid an exposure rack on some devices that can cause the first few
         // frames of the recorded output to be underexposed.
         if (![self.faceDetector isRealDetector] && ![self.textDetector isRealDetector] && ![self.barcodeDetector isRealDetector]) {
-            [self setupMovieFileCapture];
+            // [self setupMovieFileCapture]; // disable file capture on start for snapshots
         }
         [self setupOrDisableBarcodeScanner];
 
@@ -1378,6 +1400,7 @@ BOOL _sessionInterrupted = NO;
         if ([self.barcodeDetector isRealDetector]) {
             [self stopBarcodeDetection];
         }
+        [self stopSnapshotOutput];
         [self.previewLayer removeFromSuperlayer];
         [self.session commitConfiguration];
         [self.session stopRunning];
@@ -1594,6 +1617,8 @@ BOOL _sessionInterrupted = NO;
                 [self updateWhiteBalance];
                 [self updateFlashMode];
             });
+
+            [self setupSnapshotOutput];
 
             [self.previewLayer.connection setVideoOrientation:orientation];
             [self _updateMetadataObjectsToRecognize];
@@ -2228,14 +2253,96 @@ BOOL _sessionInterrupted = NO;
     self.videoDataOutput = nil;
 }
 
+# pragma mark - SnapshotOutput
+
+- (void)setupSnapshotOutput
+{
+    if (!self.snapshotOutput) {
+        self.snapshotOutput = [[AVCaptureVideoDataOutput alloc] init];
+        if (![self.session canAddOutput:_snapshotOutput]) {
+            NSLog(@"Failed to setup video data output");
+            [self stopSnapshotOutput];
+            return;
+        }
+
+        NSDictionary *rgbOutputSettings = [NSDictionary
+            dictionaryWithObject:[NSNumber numberWithInt:kCMPixelFormat_32BGRA]
+                            forKey:(id)kCVPixelBufferPixelFormatTypeKey];
+        [self.snapshotOutput setVideoSettings:rgbOutputSettings];
+        [self.snapshotOutput setAlwaysDiscardsLateVideoFrames:YES];
+        [self.snapshotOutput setSampleBufferDelegate:self queue:self.sessionQueue];
+        [self.session addOutput:_snapshotOutput];
+    }
+}
+
+- (void)stopSnapshotOutput
+{
+    if (self.snapshotOutput) {
+        [self.session removeOutput:self.snapshotOutput];
+    }
+    self.snapshotOutput = nil;
+}
+
+
 # pragma mark - mlkit
 
 - (void)captureOutput:(AVCaptureOutput *)captureOutput
     didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
            fromConnection:(AVCaptureConnection *)connection
 {
+    if (_canTakeSnapshot) {
+        CGSize previewSize = CGSizeMake(_previewLayer.frame.size.width, _previewLayer.frame.size.height);
+        NSInteger position = self.videoCaptureDeviceInput.device.position;
+        UIImage *takenImage = [RNCameraUtils convertBufferToUIImage:sampleBuffer previewSize:previewSize position:position];
+        
+        CGImageRef takenCGImage = takenImage.CGImage;
+        CGRect cropRect = CGRectMake(0, 0, CGImageGetWidth(takenCGImage), CGImageGetHeight(takenCGImage));
+        CGRect croppedSize = AVMakeRectWithAspectRatioInsideRect(previewSize, cropRect);
+        takenImage = [RNImageUtils cropImage:takenImage toRect:croppedSize];
+
+        // apply other image settings
+        BOOL isBackCamera = position == 1;
+        if (!isBackCamera || (isBackCamera && [_snapshotOptions[@"mirrorImage"] boolValue])) {
+            takenImage = [RNImageUtils mirrorImage:takenImage];
+        }
+        if ([_snapshotOptions[@"forceUpOrientation"] boolValue]) {
+            takenImage = [RNImageUtils forceUpOrientation:takenImage];
+        }
+        if ([_snapshotOptions[@"width"] integerValue]) {
+            takenImage = [RNImageUtils scaleImage:takenImage toWidth:[_snapshotOptions[@"width"] integerValue]];
+        }
+
+        NSData *destData;
+        if (_snapshotOptions[@"quality"]) {
+            destData = UIImageJPEGRepresentation(takenImage, [_snapshotOptions[@"quality"] floatValue]);
+        } else {
+            destData = UIImageJPEGRepresentation(takenImage, 1);
+        }
+        
+        NSMutableDictionary *response = [[NSMutableDictionary alloc] init];
+        response[@"width"] = @(takenImage.size.width);
+        response[@"height"] = @(takenImage.size.height);
+
+        if ([_snapshotOptions[@"arrayBuffer"] boolValue]) {
+            NSMutableArray *uint8Array = [NSMutableArray array];
+            for (NSUInteger i = 0; i < [destData length]; i += sizeof(int8_t)) {
+                int8_t elem = OSReadLittleInt([destData bytes], i);
+                [uint8Array addObject:[NSNumber numberWithInt:elem]];
+            }
+            response[@"arrayBuffer"] = uint8Array;
+        }
+        
+        if ([_snapshotOptions[@"base64"] boolValue]) {
+            response[@"base64"] = [destData base64EncodedStringWithOptions:0];
+        }
+        
+        [self onPictureSaved:@{@"data": response, @"id": @"0"}];
+    
+        _canTakeSnapshot = NO;
+    }
+    
     if (![self.textDetector isRealDetector] && ![self.faceDetector isRealDetector] && ![self.barcodeDetector isRealDetector]) {
-        NSLog(@"failing real check");
+        // NSLog(@"failing real check");
         return;
     }
 

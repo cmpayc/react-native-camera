@@ -546,6 +546,38 @@ export default class Camera extends React.Component<PropsType, StateType> {
     return await CameraManager.takePicture(options, this._cameraHandle);
   }
 
+  async takeSnapshotAsync(options?: PictureOptions) {
+    if (!options) {
+      options = {};
+    }
+    if (!options.quality) {
+      options.quality = 1;
+    }
+
+    if (options.orientation) {
+      if (typeof options.orientation !== 'number') {
+        const { orientation } = options;
+        options.orientation = CameraManager.Orientation[orientation];
+        if (__DEV__) {
+          if (typeof options.orientation !== 'number') {
+            // eslint-disable-next-line no-console
+            console.warn(`Orientation '${orientation}' is invalid.`);
+          }
+        }
+      }
+    }
+
+    if (options.pauseAfterCapture === undefined) {
+      options.pauseAfterCapture = false;
+    }
+
+    if (!this._cameraHandle) {
+      throw 'Camera handle cannot be null';
+    }
+
+    return await CameraManager.takeSnapshot(options, this._cameraHandle);
+  }
+
   async getSupportedRatiosAsync() {
     if (Platform.OS === 'android') {
       return await CameraManager.getSupportedRatios(this._cameraHandle);
@@ -848,7 +880,7 @@ export default class Camera extends React.Component<PropsType, StateType> {
             style={StyleSheet.absoluteFill}
             ref={this._setReference}
             onMountError={this._onMountError}
-            onCameraReady={this._onObjectDetected(this._onCameraReady)}
+            onCameraReady={this._onCameraReady}
             onAudioInterrupted={this._onAudioInterrupted}
             onAudioConnected={this._onAudioConnected}
             onGoogleVisionBarcodesDetected={this._onObjectDetected(

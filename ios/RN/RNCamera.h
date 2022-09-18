@@ -21,6 +21,7 @@
 @property(nonatomic, strong) AVCaptureStillImageOutput *stillImageOutput;
 @property(nonatomic, strong) AVCaptureMovieFileOutput *movieFileOutput;
 @property(nonatomic, strong) AVCaptureMetadataOutput *metadataOutput;
+@property(nonatomic, strong) AVCaptureVideoDataOutput *snapshotOutput;
 @property(nonatomic, strong) AVCaptureVideoDataOutput *videoDataOutput;
 @property(nonatomic, strong) AVCaptureVideoPreviewLayer *previewLayer;
 @property(nonatomic, strong) id runtimeErrorHandlingObserver;
@@ -82,6 +83,9 @@
 - (void)updateGoogleVisionBarcodeMode:(id)requestedMode;
 
 - (void)takePicture:(NSDictionary *)options
+            resolve:(RCTPromiseResolveBlock)resolve
+             reject:(RCTPromiseRejectBlock)reject;
+- (void)takeSnapshot:(NSDictionary *)options
             resolve:(RCTPromiseResolveBlock)resolve
              reject:(RCTPromiseRejectBlock)reject;
 - (void)takePictureWithOrientation:(NSDictionary *)options
