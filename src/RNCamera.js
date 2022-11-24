@@ -101,6 +101,7 @@ type PictureOptions = {
   quality?: number,
   orientation?: Orientation | OrientationNumber,
   base64?: boolean,
+  arrayBuffer?: boolean,
   mirrorImage?: boolean,
   exif?: boolean,
   writeExif?: boolean | { [name: string]: any },

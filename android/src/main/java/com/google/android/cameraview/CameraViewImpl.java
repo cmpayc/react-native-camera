@@ -143,6 +143,10 @@ abstract class CameraViewImpl {
 
     abstract boolean getScanning();
 
+    abstract void setSnapshotMode(boolean isSnapshotMode);
+
+    abstract void getSnapshot();
+
     abstract public void resumePreview();
 
     abstract public void pausePreview();

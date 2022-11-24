@@ -288,6 +288,27 @@ public class RNCameraView extends CameraView implements LifecycleEventListener, 
     });
   }
 
+  public void takeSnapshot(final ReadableMap options, final Promise promise, final File cacheDirectory) {
+    mBgHandler.post(new Runnable() {
+      @Override
+      public void run() {
+        mPictureTakenPromises.add(promise);
+        mPictureTakenOptions.put(promise, options);
+        mPictureTakenDirectories.put(promise, cacheDirectory);
+
+        try {
+          RNCameraView.super.getSnapshot();
+        } catch (Exception e) {
+          mPictureTakenPromises.remove(promise);
+          mPictureTakenOptions.remove(promise);
+          mPictureTakenDirectories.remove(promise);
+
+          promise.reject("E_TAKE_PICTURE_FAILED", e.getMessage());
+        }
+      }
+    });
+  }
+
   @Override
   public void onPictureSaved(WritableMap response) {
     RNCameraViewHelper.emitPictureSavedEvent(this, response);
@@ -363,6 +384,10 @@ public class RNCameraView extends CameraView implements LifecycleEventListener, 
     }
     this.mShouldScanBarCodes = shouldScanBarCodes;
     setScanning(mShouldDetectFaces || mShouldGoogleDetectBarcodes || mShouldScanBarCodes || mShouldRecognizeText);
+  }
+
+  public void setIsSnapshotMode(boolean isSnapshotMode) {
+    setSnapshotMode(isSnapshotMode);
   }
 
   public void onBarCodeRead(Result barCode, int width, int height, byte[] imageData) {

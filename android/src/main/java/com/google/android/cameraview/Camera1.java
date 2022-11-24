@@ -130,6 +130,10 @@ class Camera1 extends CameraViewImpl implements MediaRecorder.OnInfoListener,
 
     private boolean mIsScanning;
 
+    private boolean mIsSnapshotMode;
+
+    private boolean mGetSnapshot;
+
     private Boolean mPlaySoundOnCapture = false;
 
     private Boolean mPlaySoundOnRecord = false;
@@ -691,6 +695,16 @@ class Camera1 extends CameraViewImpl implements MediaRecorder.OnInfoListener,
     @Override
     boolean getScanning() {
         return mIsScanning;
+    }
+
+    @Override
+    void setSnapshotMode(boolean isSnapshotMode) {
+        mIsSnapshotMode = isSnapshotMode;
+    }
+
+    @Override
+    void getSnapshot() {
+        mGetSnapshot = true;
     }
 
     @Override

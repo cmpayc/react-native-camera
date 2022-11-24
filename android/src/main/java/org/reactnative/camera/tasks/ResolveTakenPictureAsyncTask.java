@@ -15,6 +15,7 @@ import org.reactnative.camera.utils.RNFileUtils;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 
 import java.io.ByteArrayInputStream;
@@ -60,6 +61,7 @@ public class ResolveTakenPictureAsyncTask extends AsyncTask<Void, Void, Writable
 
     @Override
     protected WritableMap doInBackground(Void... voids) {
+        long mstime = System.currentTimeMillis();
         WritableMap response = Arguments.createMap();
         ByteArrayInputStream inputStream = null;
         ExifInterface exifInterface = null;
@@ -111,6 +113,15 @@ public class ResolveTakenPictureAsyncTask extends AsyncTask<Void, Void, Writable
                 mBitmap = flipHorizontally(mBitmap);
             }
 
+            if(mOptions.hasKey("isSnapshot") && mOptions.getBoolean("isSnapshot")){
+                if (mDeviceOrientation == 0) {
+                    loadBitmap();
+                    mBitmap = rotateBitmap(mBitmap, 90);
+                } else if (mDeviceOrientation == 270) {
+                    loadBitmap();
+                    mBitmap = rotateBitmap(mBitmap, 180);
+                }
+            }
 
             // EXIF code - we will adjust exif info later if we manipulated the bitmap
             boolean writeExifToResponse = mOptions.hasKey("exif") && mOptions.getBoolean("exif");
@@ -216,6 +227,13 @@ public class ResolveTakenPictureAsyncTask extends AsyncTask<Void, Void, Writable
                     // Return file system URI
                     String fileUri = Uri.fromFile(imageFile).toString();
                     response.putString("uri", fileUri);
+                } else {
+                    response.putString("uri", "doNotSave");
+                }
+
+                if (mOptions.hasKey("arrayBuffer") && mOptions.getBoolean("arrayBuffer")) {
+                    WritableArray bytes = Arguments.createArray();
+                    response.putArray("arrayBuffer", bytes);
                 }
 
                 if (mOptions.hasKey("base64") && mOptions.getBoolean("base64")) {
@@ -249,6 +267,17 @@ public class ResolveTakenPictureAsyncTask extends AsyncTask<Void, Void, Writable
                     File imageFile = new File(filePath);
                     String fileUri = Uri.fromFile(imageFile).toString();
                     response.putString("uri", fileUri);
+                } else {
+                    response.putString("uri", "doNotSave");
+                }
+
+                if (mOptions.hasKey("arrayBuffer") && mOptions.getBoolean("arrayBuffer")) {
+                    byte[] byteArray = imageStream.toByteArray();
+                    WritableArray bytes = Arguments.createArray();
+                    for(int i = 0; i < byteArray.length; i++){
+                        bytes.pushInt(byteArray[i] & 0xff);
+                    }
+                    response.putArray("arrayBuffer", bytes);
                 }
 
                 // Write base64-encoded image to the response if requested

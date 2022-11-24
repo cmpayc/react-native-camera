@@ -284,6 +284,7 @@ public class CameraView extends FrameLayout {
         setPlaySoundOnRecord(ss.playSoundOnRecord);
         setScanning(ss.scanning);
         setPictureSize(ss.pictureSize);
+        setSnapshotMode(ss.snapshotMode);
     }
 
     public void setUsingCamera2Api(boolean useCamera2) {
@@ -618,6 +619,10 @@ public class CameraView extends FrameLayout {
 
     public boolean getScanning() { return mImpl.getScanning(); }
 
+    public void setSnapshotMode(boolean isSnapshotMode) { mImpl.setSnapshotMode(isSnapshotMode); }
+
+    public void getSnapshot() { mImpl.getSnapshot(); }
+
     /**
      * Take a picture. The result will be returned to
      * {@link Callback#onPictureTaken(CameraView, byte[], int)}.
@@ -778,6 +783,8 @@ public class CameraView extends FrameLayout {
         boolean playSoundOnRecord;
 
         boolean scanning;
+
+        boolean snapshotMode;
 
         Size pictureSize;
 

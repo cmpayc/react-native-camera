@@ -281,6 +281,29 @@ public class CameraModule extends ReactContextBaseJavaModule {
   }
 
   @ReactMethod
+  public void takeSnapshot(final ReadableMap options, final int viewTag, final Promise promise) {
+      final ReactApplicationContext context = getReactApplicationContext();
+      final File cacheDirectory = mScopedContext.getCacheDirectory();
+      UIManagerModule uiManager = context.getNativeModule(UIManagerModule.class);
+      uiManager.addUIBlock(new UIBlock() {
+          @Override
+          public void execute(NativeViewHierarchyManager nativeViewHierarchyManager) {
+              RNCameraView cameraView = (RNCameraView) nativeViewHierarchyManager.resolveView(viewTag);
+              try {
+                  if (cameraView.isCameraOpened()) {
+                      cameraView.takeSnapshot(options, promise, cacheDirectory);
+                  } else {
+                      promise.reject("E_CAMERA_UNAVAILABLE", "Camera is not running");
+                  }
+              }
+              catch (Exception e) {
+                  promise.reject("E_TAKE_PICTURE_FAILED", e.getMessage());
+              }
+          }
+      });
+  }
+
+  @ReactMethod
   public void record(final ReadableMap options, final int viewTag, final Promise promise) {
       final ReactApplicationContext context = getReactApplicationContext();
       final File cacheDirectory = mScopedContext.getCacheDirectory();

@@ -256,6 +256,8 @@ export interface RNCameraProps {
   playSoundOnCapture?: boolean;
   /** Android only */
   playSoundOnRecord?: boolean;
+  /** Android only */
+  snapshotMode?: boolean;
 
   androidCameraPermissionOptions?: {
     title: string;
@@ -423,6 +425,7 @@ interface TakePictureOptions {
   quality?: number;
   orientation?: keyof Orientation | OrientationNumber;
   base64?: boolean;
+  arrayBuffer?: boolean;
   exif?: boolean;
   width?: number;
   mirrorImage?: boolean;
@@ -444,6 +447,7 @@ export interface TakePictureResponse {
   height: number;
   uri: string;
   base64?: string;
+  arrayBuffer?: number[];
   exif?: { [name: string]: any };
   pictureOrientation: number;
   deviceOrientation: number;
@@ -490,6 +494,7 @@ export class RNCamera extends Component<RNCameraProps & ViewProperties> {
   _cameraHandle: ReturnType<typeof findNodeHandle>;
 
   takePictureAsync(options?: TakePictureOptions): Promise<TakePictureResponse>;
+  takeSnapshotAsync(options?: TakePictureOptions): Promise<TakePictureResponse>;
   recordAsync(options?: RecordOptions): Promise<RecordResponse>;
   refreshAuthorizationStatus(): Promise<void>;
   stopRecording(): void;

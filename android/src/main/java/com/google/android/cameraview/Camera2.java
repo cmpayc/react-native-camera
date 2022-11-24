@@ -20,6 +20,7 @@ import android.annotation.TargetApi;
 import android.content.Context;
 import android.graphics.ImageFormat;
 import android.graphics.Rect;
+import android.graphics.YuvImage;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -48,6 +49,7 @@ import android.os.Build;
 
 import com.facebook.react.bridge.ReadableMap;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -188,21 +190,46 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
         @Override
         public void onImageAvailable(ImageReader reader) {
             try (Image image = reader.acquireNextImage()) {
+                if (mIsSnapshotMode && !mGetSnapshot) {
+                    image.close();
+                    return;
+                }
                 Image.Plane[] planes = image.getPlanes();
                 if (planes.length > 0) {
-                    ByteBuffer buffer = planes[0].getBuffer();
-                    byte[] data = new byte[buffer.remaining()];
-                    buffer.get(data);
-                    if (image.getFormat() == ImageFormat.JPEG) {
+                    byte[] data;
+                    if (mGetSnapshot && image.getFormat() == ImageFormat.YUV_420_888) {
+                        byte[] nv21;
+                        ByteBuffer yBuffer = planes[0].getBuffer();
+                        ByteBuffer vuBuffer = planes[2].getBuffer();
+                        int ySize = yBuffer.remaining();
+                        int vuSize = vuBuffer.remaining();
+                        nv21 = new byte[ySize + vuSize];
+                        yBuffer.get(nv21, 0, ySize);
+                        vuBuffer.get(nv21, ySize, vuSize);
+
+                        YuvImage yuvImage = new YuvImage(nv21, ImageFormat.NV21, image.getWidth(), image.getHeight(), null);
+                        final ByteArrayOutputStream imageStream = new ByteArrayOutputStream();
+                        yuvImage.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 100, imageStream);
+                        data = imageStream.toByteArray();
+                    } else {
+                        ByteBuffer buffer = planes[0].getBuffer();
+                        data = new byte[buffer.remaining()];
+                        buffer.get(data);
+                    }
+                    if (mGetSnapshot || image.getFormat() == ImageFormat.JPEG) {
                         // @TODO: implement deviceOrientation
-                        mCallback.onPictureTaken(data, 0, 0);
+                        mCallback.onPictureTaken(data, mDisplayOrientation, 0);
                     } else {
                         mCallback.onFramePreview(data, image.getWidth(), image.getHeight(), mDisplayOrientation);
                     }
                     image.close();
                 }
+                if (mIsSnapshotMode && mGetSnapshot) {
+                    mGetSnapshot = false;
+                }
             }
         }
+
 
     };
 
@@ -265,6 +292,10 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
     private int mWhiteBalance;
 
     private boolean mIsScanning;
+
+    private boolean mIsSnapshotMode;
+
+    private boolean mGetSnapshot;
 
     private Boolean mPlaySoundOnCapture = false;
 
@@ -591,8 +622,14 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
                 mPreviewRequestBuilder = mCamera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
                 mPreviewRequestBuilder.addTarget(surface);
                 mPreviewRequestBuilder.addTarget(mMediaRecorderSurface);
-                mCamera.createCaptureSession(Arrays.asList(surface, mMediaRecorderSurface),
-                    mSessionCallback, null);
+                if (mIsSnapshotMode) {
+                    mPreviewRequestBuilder.addTarget(mStillImageReader.getSurface());
+                    mCamera.createCaptureSession(Arrays.asList(surface, mMediaRecorderSurface, mStillImageReader.getSurface()),
+                            mSessionCallback, null);
+                } else {
+                    mCamera.createCaptureSession(Arrays.asList(surface, mMediaRecorderSurface),
+                            mSessionCallback, null);
+                }
                 mMediaRecorder.start();
                 mIsRecording = true;
 
@@ -745,6 +782,16 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
     @Override
     boolean getScanning() {
         return mIsScanning;
+    }
+
+    @Override
+    void setSnapshotMode(boolean isSnapshotMode) {
+        mIsSnapshotMode = isSnapshotMode;
+    }
+
+    @Override
+    void getSnapshot() {
+        mGetSnapshot = true;
     }
 
     @Override
@@ -922,7 +969,7 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
             mStillImageReader.close();
         }
         mStillImageReader = ImageReader.newInstance(mPictureSize.getWidth(), mPictureSize.getHeight(),
-                ImageFormat.JPEG, 1);
+                mIsSnapshotMode ? ImageFormat.YUV_420_888 : ImageFormat.JPEG, 1);
         mStillImageReader.setOnImageAvailableListener(mOnImageAvailableListener, null);
     }
 
@@ -966,6 +1013,9 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
 
             if (mIsScanning) {
                 mPreviewRequestBuilder.addTarget(mScanImageReader.getSurface());
+            }
+            if (mIsSnapshotMode) {
+                mPreviewRequestBuilder.addTarget(mStillImageReader.getSurface());
             }
             mCamera.createCaptureSession(Arrays.asList(surface, mStillImageReader.getSurface(),
                     mScanImageReader.getSurface()), mSessionCallback, null);
@@ -1298,6 +1348,9 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
                     CameraDevice.TEMPLATE_STILL_CAPTURE);
             if (mIsScanning) {
                 mImageFormat = ImageFormat.JPEG;
+                captureRequestBuilder.removeTarget(mScanImageReader.getSurface());
+            } else if (mIsSnapshotMode) {
+                mImageFormat = ImageFormat.YUV_420_888;
                 captureRequestBuilder.removeTarget(mScanImageReader.getSurface());
             }
             captureRequestBuilder.addTarget(mStillImageReader.getSurface());
