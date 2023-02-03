@@ -1,9 +1,12 @@
 package org.reactnative.camera;
 
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.hardware.camera2.CameraAccessException;
+import android.hardware.camera2.CameraManager;
 import android.media.CamcorderProfile;
 import android.os.Build;
 import androidx.exifinterface.media.ExifInterface;
@@ -379,6 +382,22 @@ public class RNCameraViewHelper {
       }
     }
     return profile;
+  }
+
+  public static int getCameraId(Context context) {
+    int cameraId = -1;
+    CameraManager mCameraManager = (CameraManager) context.getSystemService(ReactContext.CAMERA_SERVICE);
+    try {
+      String[] mCameraIds = mCameraManager.getCameraIdList();
+      if (mCameraIds.length > 1) {
+        cameraId = Integer.parseInt(mCameraIds[1]);
+      } else if (mCameraIds.length == 1) {
+        cameraId = Integer.parseInt(mCameraIds[0]);
+      }
+    } catch (CameraAccessException e) {
+      e.printStackTrace();
+    }
+    return cameraId;
   }
 
   public static WritableMap getExifData(ExifInterface exifInterface) {

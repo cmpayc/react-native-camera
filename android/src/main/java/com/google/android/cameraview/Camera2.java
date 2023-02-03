@@ -154,6 +154,7 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
 
         @Override
         public void onClosed(@NonNull CameraCaptureSession session) {
+            super.onClosed(session);
             if (mCaptureSession != null && mCaptureSession.equals(session)) {
                 mCaptureSession = null;
             }

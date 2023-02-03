@@ -331,22 +331,31 @@ public class RNCameraView extends CameraView implements LifecycleEventListener, 
           if (options.hasKey("videoBitrate")) {
             profile.videoBitRate = options.getInt("videoBitrate");
           }
-
-          boolean recordAudio = true;
-          if (options.hasKey("mute")) {
-            recordAudio = !options.getBoolean("mute");
+          if (profile == null) {
+            int cameraId = RNCameraViewHelper.getCameraId(mThemedReactContext);
+            if (cameraId > -1) {
+              profile = CamcorderProfile.get(cameraId, CamcorderProfile.QUALITY_HIGH);
+            }
           }
+          if (profile != null) {
+            boolean recordAudio = true;
+            if (options.hasKey("mute")) {
+              recordAudio = !options.getBoolean("mute");
+            }
 
-          int orientation = Constants.ORIENTATION_AUTO;
-          if (options.hasKey("orientation")) {
-            orientation = options.getInt("orientation");
-          }
+            int orientation = Constants.ORIENTATION_AUTO;
+            if (options.hasKey("orientation")) {
+              orientation = options.getInt("orientation");
+            }
 
-          if (RNCameraView.super.record(path, maxDuration * 1000, maxFileSize, recordAudio, profile, orientation, fps)) {
-            mIsRecording = true;
-            mVideoRecordedPromise = promise;
+            if (RNCameraView.super.record(path, maxDuration * 1000, maxFileSize, recordAudio, profile, orientation, fps)) {
+              mIsRecording = true;
+              mVideoRecordedPromise = promise;
+            } else {
+              promise.reject("E_RECORDING_FAILED", "Starting video recording failed. Another recording might be in progress.");
+            }
           } else {
-            promise.reject("E_RECORDING_FAILED", "Starting video recording failed. Another recording might be in progress.");
+            promise.reject("E_RECORDING_FAILED", "Starting video recording failed. Can not find camera profile.");
           }
         } catch (IOException e) {
           promise.reject("E_RECORDING_FAILED", "Starting video recording failed - could not create video file.");
